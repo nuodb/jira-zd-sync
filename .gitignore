@@ -5,6 +5,7 @@ node_modules
 out
 dist
 *.tgz
+*.tar
 
 # code coverage
 coverage
@@ -16,6 +17,7 @@ _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
+!.env.example
 .env*
 .env.development
 .env.test
@@ -32,3 +34,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+commit.txt

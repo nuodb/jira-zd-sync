@@ -1,0 +1,48 @@
+services:
+  jira-zendesk-prod:
+    build: .
+    image: jira-zendesk-prod:latest
+    working_dir: /app
+    env_file:
+      - .env.production
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["bun", "start"]
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./logs:/app/logs
+  jira-zendesk-dev:
+    build: .
+    image: jira-zendesk-dev:latest
+    working_dir: /app
+    env_file:
+      - .env.development
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["bun", "dev"]
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./logs:/app/logs
+  jira-zendesk-test:
+    build: .
+    image: jira-zendesk-test:latest
+    working_dir: /app
+    env_file:
+      - .env.test
+    command: ["bun", "test"]
+  jira-zendesk-health:
+    build: .
+    image: jira-zendesk-health:latest
+    working_dir: /app
+    env_file:
+      - .env.production
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["bun", "health-check.ts"]

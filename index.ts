@@ -28,10 +28,12 @@ function validateEnv() {
 }
 
 let isSyncing = false;
+let cycle = 0;
 
 async function pollAndSync({ recent = false }: { recent?: boolean } = {}) {
+    cycle++;
     if (isSyncing) {
-        log(`Sync already in progress, skipping this cycle.`);
+        log(`Sync already in progress, skipping cycle`, "#" + cycle, `(${recent ? 'recent' : 'full'})`);
         return;
     }
 
@@ -39,12 +41,14 @@ async function pollAndSync({ recent = false }: { recent?: boolean } = {}) {
     const start = Date.now();
 
     try {
+        log("Starting sync cycle", "#" + cycle, `(${recent ? 'recent' : 'full'})`);
         const response = await poll({ recent });
         if (!response) return
 
         const [zTickets, jiras] = response;
         await sync(zTickets, jiras);
-        log(`Sync cycle (${recent ? 'recent' : 'full'}) completed in ${Date.now() - start}ms.`);
+        log(`Sync cycle #${cycle}, ${recent ? 'recent' : 'full'} completed in ${Date.now() - start}ms.`);
+        log("==============================================");
 
 
     } catch (err) {
@@ -55,37 +59,37 @@ async function pollAndSync({ recent = false }: { recent?: boolean } = {}) {
 
 }
 
-async function poll({ recent = false }): Promise<[zendesk.TicketsResponse | undefined, jira.PropsForZendesk[]] | undefined> {
+async function poll({ recent = false }): Promise<[zendesk.TicketsResponse['results'] | undefined, jira.PropsForZendesk[]] | undefined> {
 
     log(`Checking for tickets to update...`);
 
     let tickets = await zendesk.getTickets(recent);
     if (!recent) {
-        if (!tickets || !tickets.results) {
+        if (!tickets) {
             // log("ERROR: Could not get the tickets.");
             return
         }
-        if (tickets.results.length === 0) {
+        if (tickets.length === 0) {
             log("No tickets to update.");
             return
         }
     }
 
-    let issueKeys = tickets?.results?.map((t) => zendesk.getJIRAKey(t)) || [];
+    let issueKeysOfQueriedTickets = tickets?.map((t) => zendesk.getJIRAKey(t)) || [];
     // dedupe issueKeys
-    const uniqueKeys = new Set(issueKeys);
-    issueKeys = Array.from(uniqueKeys);
-    log("JIRAS to get:", issueKeys);
+    const uniqueKeys = new Set(issueKeysOfQueriedTickets);
+    issueKeysOfQueriedTickets = Array.from(uniqueKeys);
+    log("JIRAS to get:", issueKeysOfQueriedTickets);
 
-    if (!issueKeys) {
-        log("ERROR: Could not get the issueKeys.");
+    if (!issueKeysOfQueriedTickets) {
+        log("ERROR: Could not get the issueKeysOfQueriedTickets.");
         //! send an internal note with the issue of parsing the field
         return
     }
 
     // gets the JIRAs of the recently changed or all non-closed Zendesk tickets
-    const allZendeskJiras = await jira.getJIRAs(issueKeys);
-    console.debug("All Zendesk JIRAs", allZendeskJiras);
+    const allJIRAsOfQueriedTickets = await jira.getJIRAs(issueKeysOfQueriedTickets);
+    log(recent ? "JIRAs of the recently changed Zendesk tickets" : "JIRAs of all non-closed Zendesk tickets", allJIRAsOfQueriedTickets);
 
     // if only grabbing the recently changed Zendesk tickets, then should check if any of the tracked JIRAs recently changed
     let allJiras: jira.PropsForZendesk[] = [];
@@ -93,26 +97,33 @@ async function poll({ recent = false }): Promise<[zendesk.TicketsResponse | unde
         const recentlyChangedJiras = await jira.getRecentlyChangedJIRAs(cachedJiras);
 
         if (recentlyChangedJiras.length > 0) {
+            log("Amount of recently changed JIRAs:", recentlyChangedJiras.length);
             // override the tickets to get all the tickets that have jiras set, not only the recently changed ones
-            tickets = await zendesk.getTickets();
+            tickets = (await zendesk.getTickets()).concat(tickets || []);
+            // dedupe tickets by id
+            tickets = Array.from(new Map(tickets.map((t) => [t.id, t])).values());
         }
 
-        // merge with allZendeskJiras, and dedupe
-        allJiras = allZendeskJiras.concat(recentlyChangedJiras);
+        // merge with allJIRAsOfQueriedTickets, and dedupe
+        allJiras = allJIRAsOfQueriedTickets.concat(recentlyChangedJiras);
         const uniqueJiras = new Map(allJiras.map((jira) => [jira.key, jira]));
-        console.debug("Unique Jiras", uniqueJiras);
+        log("Unique Jiras", uniqueJiras);
         allJiras = Array.from(uniqueJiras.values());
     } else {
-        allJiras = allZendeskJiras;
+        allJiras = allJIRAsOfQueriedTickets;
     }
+
+    // allJiras represents 
+    // - the JIRAs of the recently-changed/all Zendesk tickets (that have JIRA issues)
+    // - the recently changed JIRAs 
 
     return [tickets, allJiras]
 }
 
-async function sync(tickets: zendesk.TicketsResponse | undefined, allJiras: jira.PropsForZendesk[]) {
+async function sync(tickets: zendesk.TicketsResponse['results'] | undefined, allJiras: jira.PropsForZendesk[]) {
 
 
-    console.debug("All JIRAs", allJiras);
+    log("All JIRAs to sync with", allJiras);
     const updatedJiras: jira.Issue['key'][] = [];
 
     allJiras.forEach((j) => {
@@ -136,16 +147,16 @@ async function sync(tickets: zendesk.TicketsResponse | undefined, allJiras: jira
 
     if (updatedJiras.length === 0) {
         log("No JIRAs are different than what is available in cache.");
-        return
-    }
-    log("JIRAs different than available in cache:", updatedJiras);
+        // return
+    } else log("JIRAs different than available in cache:", updatedJiras);
 
-    if (!tickets?.results) return
+    if (!tickets) return
 
-    const rawTicketsToUpdate = tickets.results.filter((t) => {
+    const rawTicketsToUpdate = tickets.filter((t) => {
         const jiraKey = zendesk.getJIRAKey(t);
 
-        if (updatedJiras.includes(jiraKey)) return true
+        if (updatedJiras.length > 0 && updatedJiras.includes(jiraKey)) return true
+        else if (allJiras.map(j => j.key).includes(jiraKey)) return true
     });
 
     // get the raw zendesk tickets that reference
@@ -179,6 +190,11 @@ async function sync(tickets: zendesk.TicketsResponse | undefined, allJiras: jira
             }]
         }
     })
+
+    if (ticketsToUpdate.length === 0) {
+        log("No tickets to update.");
+        return
+    }
 
     // update the zendesk tickets where the props of interest have changed
     await zendesk.updateTickets(ticketsToUpdate);

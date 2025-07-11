@@ -1,6 +1,37 @@
 # Zendesk ↔ JIRA Sync Server
 
+<!-- TOC -->
+- [Quick Commands for Production Maintenance](#quick-commands-for-production-maintenance)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Configuration](#configuration)
+- [File Structure](#file-structure)
+- [Running the Server (Production & Development)](#running-the-server-production--development)
+  - [Production](#production)
+  - [Development](#development)
+  - [Testing](#testing)
+  - [Health Check](#health-check)
+- [Running with Docker Compose](#running-with-docker-compose)
+- [Deployment Instructions (Docker Compose)](#deployment-instructions-docker-compose)
+- [Docker Compose and Networking Notes](#docker-compose-and-networking-notes)
+- [Troubleshooting](#troubleshooting)
+<!-- /TOC -->
+
 This project is a Node.js/Bun-based server that keeps Zendesk ticket custom fields in sync with their corresponding JIRA issues. It is designed to ensure that Zendesk tickets always reflect the latest state of their linked JIRA issues, such as type, resolution, and fix versions.
+
+## Quick Commands for Production Maintenance
+
+To start the production server:
+
+```bash
+docker compose up --build -d jira-zendesk-prod
+```
+
+To stop the production server:
+
+```bash
+docker compose down
+```
 
 ## Features
 
@@ -36,7 +67,7 @@ This project is a Node.js/Bun-based server that keeps Zendesk ticket custom fiel
 
 ## Configuration
 
-Set the following environment variables:
+Set the following environment variables in `.env.production` and `.env.development` based on the usage. **Do not commit files with secrets.** For sharing variable names, use a `.env.example` file:
 
 - `ZENDESK_DOMAIN` - Zendesk API base URL
 - `ZENDESK_EMAIL` - Zendesk user email
@@ -48,32 +79,136 @@ Set the following environment variables:
 - `JIRA_RESOLUTION_FIELD_ID` - Zendesk custom field ID for JIRA resolution
 - `JIRA_FIX_VERSIONS_FIELD_ID` - Zendesk custom field ID for JIRA fix versions
 
+Refer to http://nuoconfluence/display/SERVICES/JIRA+-+Zendesk+Sync+Server for default/example values.
+
 ## File Structure
 
 - `index.ts` - Main server logic and polling/sync orchestration
 - `zendesk.ts` - Zendesk API client and helpers
 - `jira.ts` - JIRA API client and helpers
 - `log.ts` - Logging utilities
-- `assert.ts` - Assertion helpers
-- `tests/` - Test suite
+- `logs/` - Server log files
+- `health-check.ts` - Health check script
+- `tests/` - Test suite (with mocks and helpers)
+- `docker-compose.yml` - Docker Compose configuration
+- `Dockerfile` - Docker build instructions
+- `.env.*` - Environment variable files
 
-## Running the Server
+## Running the Server (Production & Development)
 
-1. Install dependencies:
-   ```bash
-   bun install
-   ```
-2. Set environment variables (see above).
-3. Start the server:
-   ```bash
-   bun run index.ts
-   ```
+- The `jira-zendesk-dev`, `jira-zendesk-prod`, and `jira-zendesk-test` services are defined in your `docker-compose.yml`.
+- Use the appropriate `.env` file for each environment (e.g., `.env.development` for dev, `.env.production` for prod, `.env.test` for test).
 
-## Notes
+### Production
 
-- The server is designed for continuous operation and should be run as a background process.
-- Logs are written to the `logs/` directory.
-- For production use, consider adding retry logic, cache cleanup, and improved error handling.
+To run the production server:
+
+```bash
+bun start
+```
+
+Or, with Docker Compose:
+
+```bash
+# Start the production service in the background
+# (add --build to force a rebuild)
+docker compose up --build -d jira-zendesk-prod
+# View logs
+docker compose logs -f jira-zendesk-prod
+```
+
+### Development
+
+To run the development server (with hot reload, debug, or dev-specific settings):
+
+```bash
+bun dev
+```
+
+Or, with Docker Compose:
+
+```bash
+# Start the development service in the background
+docker compose up --build -d jira-zendesk-dev
+# View logs
+docker compose logs -f jira-zendesk-dev
+```
+
+### Testing
+
+To run tests, you should first start the development server (so that any required services or dependencies are available):
+
+**Without Docker Compose:**
+
+```bash
+bun dev
+# In another terminal:
+bun test
+```
+
+**With Docker Compose:**
+
+```bash
+# Start the development server (if not already running)
+docker compose up --build -d jira-zendesk-dev
+# Then run tests
+docker compose run --rm jira-zendesk-test
+```
 
 
+### Health Check
+
+You can verify that your environment variables and API credentials are correct and that both JIRA and Zendesk APIs are reachable.
+
+
+#### Run locally
+
+```bash
+NODE_ENV=development bun health-check
+NODE_ENV=production bun health-check
+```
+
+#### Run with Docker Compose
+
+```bash
+docker compose run -e NODE_ENV=development --rm jira-zendesk-health
+docker compose run -e NODE_ENV=production --rm jira-zendesk-health
+```
+
+This will attempt to connect to both APIs using the current environment and print the result to the console. Set `NODE_ENV` as needed for your environment.
+
+## Running with Docker Compose
+
+- Ensure you have Docker and Docker Compose installed.
+- Copy `.env.example` to `.env.production` and/or `.env.development` and fill in the required values.
+- Use `docker compose up --build -d <service>` to start a service in detached mode.
+- Use `docker compose logs -f <service>` to follow the logs of a service.
+
+## Deployment Instructions (Docker Compose)
+
+1. **Prepare Environment Variables:**
+   - Copy the example environment file: `cp .env.example .env.production`
+   - Edit `.env.production` to set your production values.
+
+2. **Build and Start Services:**
+   - Run `docker compose up --build -d jira-zendesk-prod` to build and start the production services.
+
+3. **Monitor Logs:**
+   - Use `docker compose logs -f jira-zendesk-prod` to monitor the logs for any issues.
+
+4. **Verify Deployment:**
+   - Check the health of the services and verify that the application is working as expected.
+
+## Docker Compose and Networking Notes
+
+- Docker Compose creates a default network for your application. All services are connected to this network and can communicate with each other using the service name as the hostname.
+- If you need to connect to external services (like databases or APIs), ensure that the necessary ports are exposed and any required environment variables are set.
+- For development, you might want to use `docker compose up --build` to rebuild the images when code changes. For production, use `docker compose up -d` to start the services in detached mode.
+
+## Troubleshooting
+
+- **Log files not created:** Ensure the `logs/` directory exists and is writable by the container. If using Docker Compose, check volume permissions.
+- **Environment variables not loaded:** Make sure you have the correct `.env.*` file for your environment and it is in the project root.
+- **Docker image not rebuilding:** Use `docker compose up --build -d ...` to force a rebuild.
+- **Permission errors:** If you see file or directory permission errors, check your Docker volume mappings and user permissions.
 

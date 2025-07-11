@@ -65,7 +65,7 @@ namespace zendesk {
             }
         });
 
-        error && console.error("erred", error);
+        error && log("erred", error);
         assert(data && data.ticket, "failed to get the ticket by id " + ticketId);
         const { ticket } = data;
 
@@ -106,7 +106,7 @@ namespace zendesk {
      * Get the Zendesk tickets that are not solved or closed that have the "JIRA or Github" field set.
      * @returns 
      */
-    export async function getTickets(recent = false) {
+    export async function getTickets(recent = false): Promise<any[]> {
 
         // if recent, only get tickets that have been updated in the last 60 seconds
         const recencyClause = recent ? `updated>${new Date(new Date().getTime() - 60 * 1000).toISOString()}` : "";
@@ -118,18 +118,18 @@ namespace zendesk {
 
         if (error || !data.results) {
             log("Error polling:", error);
-            return
+            return []
         }
 
-        if (!("results" in data)) return
+        if (!("results" in data)) return []
         if (data.results.length === 0) {
             log("No tickets found by query", query, JSON.stringify(data));
-            return
+            return []
         }
 
         log(`Tickets that are not closed that have a JIRA field set${recent ? " and the zendesk ticket was recently updated" : ""}:`, data.results.map((t) => t.id));
 
-        return data as TicketsResponse
+        return data.results || data as TicketsResponse['results']
     }
 
 

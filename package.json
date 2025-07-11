@@ -13,5 +13,10 @@
   },
   "peerDependencies": {
     "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "dev": "NODE_ENV=development bun run --watch index.ts",
+    "start": "NODE_ENV=production bun run index.ts",
+    "health-check": "bun run health-check.ts"
   }
 }

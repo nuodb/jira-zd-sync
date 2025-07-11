@@ -4,6 +4,7 @@ import zendesk from "zendesk";
 import jira from "jira";
 import versions from "./mock/jiraVersions";
 import { wait } from "./helpers";
+import log from "log";
 
 let zTicketId: undefined | number;
 
@@ -33,6 +34,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
     assert(zTicketId);
+    log("Deleting field of JIRA with key:", testJira.key, zTicketId);
     await jira.updateJira(testJira.key, JSON.stringify({
         fields: {
             fixVersions: []

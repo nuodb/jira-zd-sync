@@ -103,6 +103,7 @@ namespace jira {
     //? doesn't work for just any field.
     export async function updateJira(issueKey: string, body: string): Promise<void> {
 
+        log("Updating JIRA issue:", issueKey, body);
 
         const response: any = await fetch(`${Bun.env.JIRA_DOMAIN}/rest/api/2/issue/${issueKey}`, {
             method: 'PUT',
@@ -133,13 +134,13 @@ namespace jira {
                 'Accept': 'application/json'
             }
         })
-        console.debug(response);
+        log(response);
         //@ts-ignore
         const target = await response.json();
         if (target) {
-            console.log("Version ID:", target);
+            log("Version ID:", target);
         } else {
-            console.error("Version 7.0 not found.");
+            log("Version 7.0 not found.");
         }
     }
 
@@ -152,7 +153,7 @@ namespace jira {
         const recencyClause = `AND updated >= -2m`;
         const jiraKeys = jiras.keys().toArray();
         if (jiraKeys.length === 0) return [];
-        // console.debug("JIRAKEYS:", jiraKeys);
+        // log("JIRAKEYS:", jiraKeys);
         const jql = `issuekey in (${jiraKeys.map(k => `"${k}"`).join(",")}) ${recencyClause} ORDER BY updated DESC`;
 
         // const response: any = await fetch("http://nuojira.dsone.3ds.com/rest/api/2/search?reporter%20=%20currentUser()%20ORDER%20BY%20created%20DESC", {
@@ -173,13 +174,12 @@ namespace jira {
             })
         });
         if (!response.ok) {
-            console.error("Error fetching issues:", response.statusText);
+            log("Error fetching issues:", response.statusText);
         }
         const data: Response = await response.json();
-        console.log("Recently updated issues:", data);
+        log("Recently updated issues:", data);
         data.issues.forEach(issue => {
-            //@ts-ignore
-            console.log(`${issue.key}: ${issue.fields.status.name}, updated at ${issue.fields.updated}`);
+            log(`${issue.key}: updated at ${issue.fields.updated}`);
         });
 
         const processedIssues: PropsForZendesk[] = data.issues.map((issue) => ({
